@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Products</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        :root{
+            --bg:#f6f6f8; --card:#fff; --text:#1a1a1a; --muted:#6b6b76;
+            --border:#e4e4ea; --accent:#2f6fed; --accent-text:#fff; --radius:12px;
+        }
+        @media (prefers-color-scheme: dark){
+            :root:not([data-theme="light"]){
+                --bg:#121214; --card:#1c1c1f; --text:#f0f0f2; --muted:#9a9aa2; --border:#2c2c31;
+            }
+        }
+        :root[data-theme="dark"]{
+            --bg:#121214; --card:#1c1c1f; --text:#f0f0f2; --muted:#9a9aa2; --border:#2c2c31;
+        }
+        *{box-sizing:border-box;}
+        html,body{margin:0;padding:0;}
+        body{
+            background:var(--bg); color:var(--text);
+            font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+            padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+        }
+        header{
+            padding:16px; border-bottom:1px solid var(--border); position:sticky; top:0;
+            background:var(--bg); padding-top:calc(16px + env(safe-area-inset-top,0px)); z-index:5;
+        }
+        h1{font-size:18px; margin:0 0 12px;}
+        .filters{display:flex; flex-wrap:wrap; gap:8px;}
+        .filters input, .filters select{
+            padding:8px 10px; border-radius:8px; border:1px solid var(--border);
+            background:var(--card); color:var(--text); font-size:14px;
+        }
+        .filters input{flex:1 1 160px;}
+        main{padding:16px; max-width:1100px; margin:0 auto;}
+        .grid{
+            display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:14px;
+        }
+        .card{
+            background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+            padding:12px; cursor:pointer; transition:transform .1s ease;
+        }
+        .card:hover{transform:translateY(-2px);}
+        .thumb{
+            width:100%; aspect-ratio:1/1; border-radius:8px; background:var(--bg);
+            display:flex; align-items:center; justify-content:center; overflow:hidden; margin-bottom:8px;
+        }
+        .thumb img{width:100%; height:100%; object-fit:cover;}
+        .thumb span{color:var(--muted); font-size:12px;}
+        .card .name{font-size:14px; font-weight:600; margin:0 0 4px;}
+        .card .meta{font-size:12px; color:var(--muted); margin:0;}
+        .state{padding:40px; text-align:center; color:var(--muted);}
+
+        .admin-row{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;}
+        .admin-btn{
+            padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--card);
+            color:var(--text); font-size:13px; cursor:pointer; font-weight:600;
+        }
+        .admin-btn.primary{background:var(--accent); color:var(--accent-text); border-color:var(--accent);}
+        .admin-btn.danger{color:#d33; border-color:#d33;}
+        .admin-btn:disabled{opacity:.5; cursor:not-allowed;}
+        .progress-wrap{display:none; align-items:center; gap:10px; margin-top:10px;}
+        .progress-bar{flex:1; height:8px; border-radius:4px; background:var(--border); overflow:hidden;}
+        .progress-fill{height:100%; width:0%; background:var(--accent); transition:width .2s ease;}
+        .progress-text{font-size:12px; color:var(--muted); min-width:70px; text-align:right;}
+
+        .overlay{
+            position:fixed; inset:0; background:rgba(0,0,0,.5); display:none;
+            align-items:flex-end; justify-content:center; z-index:20;
+        }
+        .overlay.open{display:flex;}
+        .modal{
+            background:var(--card); width:100%; max-width:480px; max-height:92vh; overflow-y:auto;
+            border-radius:16px 16px 0 0; padding:16px; padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));
+        }
+        @media (min-width:600px){
+            .overlay{align-items:center;}
+            .modal{border-radius:16px; max-height:88vh;}
+        }
+        .modal-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
+        .modal-top h2{font-size:16px; margin:0;}
+        .close-btn{
+            border:none; background:var(--bg); color:var(--text); width:32px; height:32px;
+            border-radius:50%; font-size:16px; cursor:pointer;
+        }
+        .big-img{
+            width:100%; aspect-ratio:1/1; border-radius:12px; background:var(--bg);
+            display:flex; align-items:center; justify-content:center; overflow:hidden; margin-bottom:8px;
+        }
+        .big-img img{width:100%; height:100%; object-fit:cover;}
+        .thumbs{display:flex; gap:8px; margin-bottom:16px;}
+        .thumbs .mini{
+            width:56px; height:56px; border-radius:8px; overflow:hidden; border:2px solid transparent;
+            cursor:pointer; background:var(--bg); flex-shrink:0;
+        }
+        .thumbs .mini.active{border-color:var(--accent);}
+        .thumbs .mini img{width:100%; height:100%; object-fit:cover;}
+        .section-label{font-size:12px; color:var(--muted); margin:14px 0 6px; text-transform:uppercase; letter-spacing:.03em;}
+        .options{display:flex; flex-wrap:wrap; gap:8px;}
+        .opt-btn{
+            padding:8px 14px; border-radius:20px; border:1px solid var(--border); background:var(--bg);
+            color:var(--text); font-size:13px; cursor:pointer;
+        }
+        .opt-btn.active{background:var(--accent); color:var(--accent-text); border-color:var(--accent);}
+        .price{font-size:20px; font-weight:700; margin:14px 0 0;}
+        .qty-row{display:flex; align-items:center; gap:10px; margin-top:14px;}
+        .qty-btn{
+            width:36px; height:36px; border-radius:8px; border:1px solid var(--border); background:var(--bg);
+            color:var(--text); font-size:16px; cursor:pointer;
+        }
+        .qty-val{min-width:24px; text-align:center; font-size:15px;}
+        .add-btn{
+            width:100%; margin-top:18px; padding:14px; border:none; border-radius:10px;
+            background:var(--accent); color:var(--accent-text); font-size:15px; font-weight:600; cursor:pointer;
+        }
+        .add-btn:active{opacity:.85;}
+
+        /* ================= Barcode scanner ================= */
+        .scanner-fab{
+            position:fixed; right:18px; bottom:18px; bottom:calc(18px + env(safe-area-inset-bottom,0px));
+            width:58px; height:58px; border-radius:50%; border:none; background:var(--accent); color:var(--accent-text);
+            display:flex; align-items:center; justify-content:center; box-shadow:0 8px 24px rgba(0,0,0,.28);
+            cursor:pointer; z-index:30; font-size:24px; line-height:1;
+        }
+        .scanner-fab:active{transform:scale(.97);}
+        .scanner-fab:disabled{opacity:.55; cursor:not-allowed;}
+        .scanner-overlay{
+            position:fixed; inset:0; background:#08080a; display:none; z-index:60;
+            color:#fff; padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);
+        }
+        .scanner-overlay.open{display:flex; flex-direction:column;}
+        .scanner-top{
+            height:58px; display:flex; align-items:center; justify-content:space-between; padding:0 14px;
+            background:rgba(0,0,0,.38); flex-shrink:0;
+        }
+        .scanner-top h2{font-size:16px; margin:0;}
+        .scanner-video-wrap{position:relative; flex:1; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden;}
+        .scanner-video{width:100%; height:100%; object-fit:cover; background:#000;}
+        .scanner-frame{
+            position:absolute; width:min(78vw,330px); aspect-ratio:1.65/1; border:3px solid rgba(255,255,255,.9);
+            border-radius:16px; box-shadow:0 0 0 9999px rgba(0,0,0,.36); pointer-events:none;
+        }
+        .scanner-status{
+            min-height:78px; padding:10px 16px 14px; background:rgba(0,0,0,.6); text-align:center; flex-shrink:0;
+        }
+        .scanner-status strong{display:block; font-size:14px; margin-bottom:4px;}
+        .scanner-status span{display:block; color:rgba(255,255,255,.7); font-size:12px; line-height:1.4;}
+        .scanner-manual{display:flex; gap:8px; margin-top:10px;}
+        .scanner-manual input{
+            flex:1; min-width:0; padding:10px 12px; border:1px solid rgba(255,255,255,.18); border-radius:9px;
+            background:rgba(255,255,255,.09); color:#fff; font-size:14px; outline:none;
+        }
+        .scanner-manual input::placeholder{color:rgba(255,255,255,.45);}
+        .scanner-manual button{
+            padding:10px 14px; border-radius:9px; border:1px solid rgba(255,255,255,.18); background:#fff;
+            color:#111; font-size:13px; font-weight:700; cursor:pointer;
+        }
+        .scanner-error{color:#ffb4b4 !important;}
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Products</h1>
+    <div class="filters">
+        <input id="f-search" type="text" placeholder="Search designation…">
+        <select id="f-famille"><option value="">All familles</option></select>
+        <select id="f-sous-famille"><option value="">All sous-familles</option></select>
+        <select id="f-size"><option value="">All sizes</option></select>
+    </div>
+    <div class="admin-row">
+        <button id="import-btn" class="admin-btn primary">Insert from Excel</button>
+        <input type="file" id="import-file" accept=".xlsx,.xls" style="display:none">
+        <button id="delete-all-btn" class="admin-btn danger">Delete all products</button>
+        <button id="link-images-btn" class="admin-btn">Link images</button>
+        <button id="repair-groups-btn" class="admin-btn">Rebuild product groups</button>
+    </div>
+    <div class="progress-wrap" id="progress-wrap">
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        <span class="progress-text" id="progress-text">0%</span>
+    </div>
+</header>
+
+<main>
+    <div id="grid" class="grid"></div>
+    <div id="state" class="state">Loading…</div>
+</main>
+
+<div class="overlay" id="overlay">
+    <div class="modal" id="modal"></div>
+</div>
+
+
+<button id="scanner-fab" class="scanner-fab" type="button" aria-label="Scan barcode" title="Scan barcode">▣</button>
+
+<div class="scanner-overlay" id="scanner-overlay" aria-hidden="true">
+    <div class="scanner-top">
+        <h2>Scan barcode</h2>
+        <button class="close-btn" id="scanner-close-btn" type="button" aria-label="Close scanner">✕</button>
+    </div>
+    <div class="scanner-video-wrap">
+        <video id="scanner-video" class="scanner-video" playsinline muted autoplay></video>
+        <div class="scanner-frame"></div>
+    </div>
+    <div class="scanner-status">
+        <strong id="scanner-status-title">Point the camera at a barcode</strong>
+        <span id="scanner-status-text">The product must already exist in the database.</span>
+        <div class="scanner-manual">
+            <input id="scanner-manual-input" type="text" inputmode="numeric" autocomplete="off" placeholder="Or enter barcode manually">
+            <button id="scanner-manual-btn" type="button">Search</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    /* ====== SET YOUR SUPABASE CREDENTIALS HERE ====== */
+    const SUPABASE_URL = "https://vdibwjoenpzqydjttuvh.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkaWJ3am9lbnB6cXlkanR0dXZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAxNTcyMjAsImV4cCI6MjEwNTczMzIyMH0.09j-rb0UxwTJKdS7QoRzk6JDjjTLLYhxYGi7C_uP6YY";
+
+    /* ================================================= */
+
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let PRODUCTS = [];
+    let currentProduct = null;
+    let currentColor = null;
+    let currentSize = null;
+    let qty = 1;
+
+    const gridEl = document.getElementById('grid');
+    const stateEl = document.getElementById('state');
+    const overlay = document.getElementById('overlay');
+    const modal = document.getElementById('modal');
+
+    async function loadProducts(){
+        try{
+            const { data, error } = await sb
+                .from('products')
+                .select(`
+        id, designation, famille, sous_famille,
+        product_colors (
+          id, code_modele, color, images,
+          product_variants ( id, size, price, barcode )
+        )
+      `);
+            if(error) throw error;
+            PRODUCTS = data || [];
+            populateFilterOptions();
+            render();
+        }catch(err){
+            stateEl.textContent = "Couldn't load products: " + err.message;
+        }
+    }
+
+    function populateFilterOptions(){
+        const familles = new Set(), sousFamilles = new Set(), sizes = new Set();
+        PRODUCTS.forEach(p=>{
+            if(p.famille) familles.add(p.famille);
+            if(p.sous_famille) sousFamilles.add(p.sous_famille);
+            (p.product_colors||[]).forEach(c=>(c.product_variants||[]).forEach(v=>{ if(v.size) sizes.add(v.size); }));
+        });
+        fillSelect('f-famille', familles);
+        fillSelect('f-sous-famille', sousFamilles);
+        fillSelect('f-size', sizes);
+    }
+
+    function fillSelect(id, values){
+        const sel = document.getElementById(id);
+        [...values].sort().forEach(v=>{
+            const opt = document.createElement('option');
+            opt.value = v; opt.textContent = v;
+            sel.appendChild(opt);
+        });
+    }
+
+    function getFiltered(){
+        const search = document.getElementById('f-search').value.trim().toLowerCase();
+        const famille = document.getElementById('f-famille').value;
+        const sousFamille = document.getElementById('f-sous-famille').value;
+        const size = document.getElementById('f-size').value;
+
+        return PRODUCTS.filter(p=>{
+            const label = (p.designation || '').toLowerCase();
+            if(search && !label.includes(search)) return false;
+            if(famille && p.famille !== famille) return false;
+            if(sousFamille && p.sous_famille !== sousFamille) return false;
+            if(size){
+                const hasSize = (p.product_colors||[]).some(c=>(c.product_variants||[]).some(v=>v.size===size));
+                if(!hasSize) return false;
+            }
+            return true;
+        });
+    }
+
+    function productLabel(p){
+        return p.designation && p.designation.trim() ? p.designation : ('Product ' + p.id.slice(0,8));
+    }
+
+    function firstImage(p){
+        const c = (p.product_colors||[])[0];
+        const img = c && (c.images||[])[0];
+        return img || null;
+    }
+
+    function render(){
+        const list = getFiltered();
+        gridEl.innerHTML = '';
+        if(list.length === 0){
+            stateEl.style.display = 'block';
+            stateEl.textContent = 'No products match these filters.';
+            return;
+        }
+        stateEl.style.display = 'none';
+
+        list.forEach(p=>{
+            const card = document.createElement('div');
+            card.className = 'card';
+            const img = firstImage(p);
+            card.innerHTML = `
+      <div class="thumb">${img ? `<img src="${img}" alt="">` : `<span>No image</span>`}</div>
+      <p class="name">${productLabel(p)}</p>
+      <p class="meta">${[p.famille, p.sous_famille].filter(Boolean).join(' · ') || '—'}</p>
+    `;
+            card.addEventListener('click', ()=>openModal(p));
+            gridEl.appendChild(card);
+        });
+    }
+
+    ['f-search','f-famille','f-sous-famille','f-size'].forEach(id=>{
+        document.getElementById(id).addEventListener('input', render);
+        document.getElementById(id).addEventListener('change', render);
+    });
+
+    function openModal(p, selectedColorId = null, selectedVariantId = null){
+        currentProduct = p;
+        const colors = p.product_colors || [];
+        currentColor = selectedColorId
+            ? (colors.find(c => c.id === selectedColorId) || colors[0] || null)
+            : (colors[0] || null);
+        const sizes = currentColor ? (currentColor.product_variants||[]) : [];
+        currentSize = selectedVariantId
+            ? (sizes.find(v => v.id === selectedVariantId) || sizes[0] || null)
+            : (sizes[0] || null);
+        qty = 1;
+        renderModal();
+        overlay.classList.add('open');
+    }
+
+    function closeModal(){
+        overlay.classList.remove('open');
+    }
+
+    function renderModal(){
+        const p = currentProduct;
+        const colors = p.product_colors || [];
+        const images = (currentColor && currentColor.images) || [];
+        const mainImg = images[0] || null;
+        const variants = (currentColor && currentColor.product_variants) || [];
+        const price = currentSize ? currentSize.price : null;
+
+        modal.innerHTML = `
+    <div class="modal-top">
+      <h2>${productLabel(p)}</h2>
+      <button class="close-btn" id="close-btn">✕</button>
+    </div>
+
+    <div class="big-img" id="big-img">${mainImg ? `<img src="${mainImg}" alt="">` : `<span style="color:var(--muted);font-size:13px;">No image</span>`}</div>
+    <div class="thumbs" id="thumbs"></div>
+
+    <div class="section-label">Color</div>
+    <div class="options" id="color-options"></div>
+
+    <div class="section-label">Size</div>
+    <div class="options" id="size-options"></div>
+
+    <p class="price">${price !== null ? formatPrice(price) : '—'}</p>
+
+    <div class="section-label">Quantity</div>
+    <div class="qty-row">
+      <button class="qty-btn" id="qty-minus">−</button>
+      <span class="qty-val" id="qty-val">${qty}</span>
+      <button class="qty-btn" id="qty-plus">+</button>
+    </div>
+
+    <button class="add-btn" id="add-btn">Add to cart</button>
+  `;
+
+        document.getElementById('close-btn').addEventListener('click', closeModal);
+
+        // thumbnails
+        const thumbsEl = document.getElementById('thumbs');
+        images.forEach((img, i)=>{
+            const t = document.createElement('div');
+            t.className = 'mini' + (i===0 ? ' active' : '');
+            t.innerHTML = `<img src="${img}" alt="">`;
+            t.addEventListener('click', ()=>{
+                document.getElementById('big-img').innerHTML = `<img src="${img}" alt="">`;
+                thumbsEl.querySelectorAll('.mini').forEach(m=>m.classList.remove('active'));
+                t.classList.add('active');
+            });
+            thumbsEl.appendChild(t);
+        });
+
+        // color options
+        const colorEl = document.getElementById('color-options');
+        colors.forEach(c=>{
+            const b = document.createElement('button');
+            b.className = 'opt-btn' + (currentColor && c.id===currentColor.id ? ' active' : '');
+            b.textContent = c.color;
+            b.addEventListener('click', ()=>{
+                currentColor = c;
+                const newSizes = c.product_variants || [];
+                currentSize = newSizes[0] || null;
+                renderModal();
+            });
+            colorEl.appendChild(b);
+        });
+
+        // size options
+        const sizeEl = document.getElementById('size-options');
+        if(variants.length === 0){
+            sizeEl.innerHTML = `<span style="color:var(--muted);font-size:13px;">No sizes available</span>`;
+        }
+        variants.forEach(v=>{
+            const b = document.createElement('button');
+            b.className = 'opt-btn' + (currentSize && v.id===currentSize.id ? ' active' : '');
+            b.textContent = v.size;
+            b.addEventListener('click', ()=>{
+                currentSize = v;
+                renderModal();
+            });
+            sizeEl.appendChild(b);
+        });
+
+        document.getElementById('qty-minus').addEventListener('click', ()=>{
+            qty = Math.max(1, qty-1);
+            document.getElementById('qty-val').textContent = qty;
+        });
+        document.getElementById('qty-plus').addEventListener('click', ()=>{
+            qty = qty+1;
+            document.getElementById('qty-val').textContent = qty;
+        });
+
+        document.getElementById('add-btn').addEventListener('click', ()=>{
+            const btn = document.getElementById('add-btn');
+            btn.textContent = 'Added ✓';
+            setTimeout(()=>{ btn.textContent = 'Add to cart'; }, 1200);
+        });
+    }
+
+    function formatPrice(n){
+        return Number(n).toFixed(2);
+    }
+
+    overlay.addEventListener('click', (e)=>{ if(e.target === overlay) closeModal(); });
+
+
+    /* ================= Barcode scanner ================= */
+
+    const scannerFab = document.getElementById('scanner-fab');
+    const scannerOverlay = document.getElementById('scanner-overlay');
+    const scannerVideo = document.getElementById('scanner-video');
+    const scannerCloseBtn = document.getElementById('scanner-close-btn');
+    const scannerStatusTitle = document.getElementById('scanner-status-title');
+    const scannerStatusText = document.getElementById('scanner-status-text');
+    const scannerManualInput = document.getElementById('scanner-manual-input');
+    const scannerManualBtn = document.getElementById('scanner-manual-btn');
+
+    let scannerStream = null;
+    let scannerRunning = false;
+    let scannerBusy = false;
+    let barcodeDetector = null;
+    let scannerLastCode = '';
+    let scannerLastTime = 0;
+
+    function normalizeBarcode(value){
+        return String(value == null ? '' : value)
+            .trim()
+            .replace(/\s+/g, '')
+            .replace(/[^0-9A-Za-z]/g, '')
+            .toUpperCase();
+    }
+
+    function stopScannerCamera(){
+        scannerRunning = false;
+        if(scannerStream){
+            scannerStream.getTracks().forEach(track => track.stop());
+            scannerStream = null;
+        }
+        try { scannerVideo.pause(); } catch(_err){}
+        scannerVideo.srcObject = null;
+    }
+
+    function closeScanner(){
+        stopScannerCamera();
+        scannerBusy = false;
+        scannerFab.disabled = false;
+        scannerOverlay.classList.remove('open');
+        scannerOverlay.setAttribute('aria-hidden','true');
+    }
+
+    function setScannerStatus(title, text, isError=false){
+        scannerStatusTitle.textContent = title;
+        scannerStatusText.textContent = text || '';
+        scannerStatusText.classList.toggle('scanner-error', !!isError);
+    }
+
+    function findProductByBarcode(code){
+        const target = normalizeBarcode(code);
+        if(!target) return null;
+        for(const p of PRODUCTS){
+            for(const c of (p.product_colors || [])){
+                for(const v of (c.product_variants || [])){
+                    if(normalizeBarcode(v.barcode) === target){
+                        return { product:p, color:c, variant:v };
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    async function openScannedBarcode(rawCode){
+        const code = normalizeBarcode(rawCode);
+        if(!code) return;
+
+        scannerBusy = true;
+        setScannerStatus('Looking up barcode…', code);
+
+        // First use the already-loaded DB cache for an immediate exact match.
+        let match = findProductByBarcode(code);
+
+        // If the cached products do not contain it, query the DB directly.
+        // We use separate lookups here because this is more reliable across
+        // Supabase relation shapes than depending on deeply nested joins.
+        if(!match){
+            try{
+                const { data: variantRow, error: variantErr } = await sb
+                    .from('product_variants')
+                    .select('id, color_id, size, price, barcode')
+                    .eq('barcode', code)
+                    .maybeSingle();
+                if(variantErr) throw variantErr;
+
+                if(variantRow){
+                    const { data: colorRow, error: colorErr } = await sb
+                        .from('product_colors')
+                        .select('id, product_id, code_modele, color, images')
+                        .eq('id', variantRow.color_id)
+                        .maybeSingle();
+                    if(colorErr) throw colorErr;
+
+                    if(colorRow){
+                        const { data: productRow, error: productErr } = await sb
+                            .from('products')
+                            .select('id, designation, famille, sous_famille')
+                            .eq('id', colorRow.product_id)
+                            .maybeSingle();
+                        if(productErr) throw productErr;
+
+                        if(productRow){
+                            const { data: colorRows, error: colorsErr } = await sb
+                                .from('product_colors')
+                                .select('id, product_id, code_modele, color, images, product_variants(id, size, price, barcode)')
+                                .eq('product_id', productRow.id);
+                            if(colorsErr) throw colorsErr;
+
+                            const hydratedColors = (colorRows || []).map(c => ({
+                                id:c.id,
+                                product_id:c.product_id,
+                                code_modele:c.code_modele,
+                                color:c.color,
+                                images:c.images || [],
+                                product_variants:c.product_variants || []
+                            }));
+                            const hydratedProduct = {
+                                id:productRow.id,
+                                designation:productRow.designation,
+                                famille:productRow.famille,
+                                sous_famille:productRow.sous_famille,
+                                product_colors:hydratedColors
+                            };
+                            const hydratedColor = hydratedColors.find(c => c.id === colorRow.id) || {
+                                id:colorRow.id,
+                                product_id:colorRow.product_id,
+                                code_modele:colorRow.code_modele,
+                                color:colorRow.color,
+                                images:colorRow.images || [],
+                                product_variants:[]
+                            };
+                            const hydratedVariant = hydratedColor.product_variants.find(v => normalizeBarcode(v.barcode) === code) || {
+                                id:variantRow.id, size:variantRow.size, price:variantRow.price, barcode:variantRow.barcode
+                            };
+                            match = { product:hydratedProduct, color:hydratedColor, variant:hydratedVariant };
+                        }
+                    }
+                }
+            }catch(err){
+                console.error('Barcode lookup failed:', err);
+                setScannerStatus('Lookup error', err.message || 'Could not search the database.', true);
+                scannerBusy = false;
+                return;
+            }
+        }
+
+        if(!match){
+            setScannerStatus('Barcode not found', 'No product with this barcode exists in the database.', true);
+            scannerBusy = false;
+            return;
+        }
+
+        stopScannerCamera();
+        scannerOverlay.classList.remove('open');
+        scannerOverlay.setAttribute('aria-hidden','true');
+        scannerBusy = false;
+        scannerFab.disabled = false;
+
+        // Add the scanned product to the in-memory cache when the direct DB
+        // lookup was needed, so the normal modal can still render all details.
+        if(!PRODUCTS.some(p => p.id === match.product.id)){
+            PRODUCTS.push(match.product);
+            populateFilterOptions();
+        }
+
+        openModal(match.product, match.color.id, match.variant.id);
+    }
+
+    async function detectBarcodeLoop(){
+        if(!scannerRunning || !barcodeDetector || scannerBusy) return;
+        if(scannerVideo.readyState < 2){
+            setTimeout(detectBarcodeLoop, 120);
+            return;
+        }
+
+        try{
+            const results = await barcodeDetector.detect(scannerVideo);
+            if(results && results.length){
+                const raw = results[0].rawValue || '';
+                const code = normalizeBarcode(raw);
+                const now = Date.now();
+                if(code && (code !== scannerLastCode || now - scannerLastTime > 1500)){
+                    scannerLastCode = code;
+                    scannerLastTime = now;
+                    await openScannedBarcode(code);
+                    return;
+                }
+            }
+        }catch(err){
+            console.debug('Barcode detection frame failed:', err);
+        }
+
+        if(scannerRunning) setTimeout(detectBarcodeLoop, 150);
+    }
+
+    async function createBarcodeDetector(){
+        if(!('BarcodeDetector' in window)) return null;
+
+        const preferred = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','code_93','codabar','itf'];
+        try{
+            if(typeof BarcodeDetector.getSupportedFormats === 'function'){
+                const supported = await BarcodeDetector.getSupportedFormats();
+                const formats = preferred.filter(f => supported.includes(f));
+                if(formats.length) return new BarcodeDetector({formats});
+            }
+        }catch(_err){}
+
+        try { return new BarcodeDetector(); } catch(_err) { return null; }
+    }
+
+    async function startScanner(){
+        if(scannerBusy) return;
+        scannerBusy = true;
+        scannerLastCode = '';
+        scannerLastTime = 0;
+        scannerFab.disabled = true;
+        scannerOverlay.classList.add('open');
+        scannerOverlay.setAttribute('aria-hidden','false');
+        setScannerStatus('Starting camera…', 'Allow camera access when your browser asks.');
+
+        try{
+            if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+                throw new Error('Camera access is not available in this browser.');
+            }
+
+            barcodeDetector = await createBarcodeDetector();
+            if(!barcodeDetector){
+                setScannerStatus('Scanner unavailable', 'This browser does not provide barcode detection. You can enter the barcode below.', true);
+            }
+
+            scannerStream = await navigator.mediaDevices.getUserMedia({
+                video:{facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720}},
+                audio:false
+            });
+            scannerVideo.srcObject = scannerStream;
+            await scannerVideo.play();
+
+            scannerRunning = true;
+            scannerBusy = false;
+            if(barcodeDetector){
+                setScannerStatus('Point the camera at a barcode', 'It will open the product automatically when found.');
+                detectBarcodeLoop();
+            }else{
+                setScannerStatus('Camera ready', 'Use the barcode field below to search.');
+            }
+        }catch(err){
+            stopScannerCamera();
+            scannerBusy = false;
+            scannerFab.disabled = false;
+            setScannerStatus('Could not start scanner', err.name === 'NotAllowedError'
+                ? 'Camera permission was denied. You can enter the barcode manually below.'
+                : (err.message || 'Please check camera permissions.'), true);
+        }
+    }
+
+    scannerFab.addEventListener('click', startScanner);
+    scannerCloseBtn.addEventListener('click', closeScanner);
+
+    scannerOverlay.addEventListener('click', (e)=>{
+        if(e.target === scannerOverlay) closeScanner();
+    });
+
+    scannerManualBtn.addEventListener('click', ()=>openScannedBarcode(scannerManualInput.value));
+    scannerManualInput.addEventListener('keydown', (e)=>{
+        if(e.key === 'Enter') openScannedBarcode(scannerManualInput.value);
+    });
+
+    /* ================= Excel import ================= */
+
+    const importBtn = document.getElementById('import-btn');
+    const importFile = document.getElementById('import-file');
+    const deleteAllBtn = document.getElementById('delete-all-btn');
+    const linkImagesBtn = document.getElementById('link-images-btn');
+    const repairGroupsBtn = document.getElementById('repair-groups-btn');
+    const progressWrap = document.getElementById('progress-wrap');
+    const progressFill = document.getElementById('progress-fill');
+    const progressText = document.getElementById('progress-text');
+
+    function showProgress(on){
+        progressWrap.style.display = on ? 'flex' : 'none';
+        if(on) setProgress(0, '0%');
+    }
+    function setProgress(pct, label){
+        progressFill.style.width = pct + '%';
+        progressText.textContent = label !== undefined ? label : (pct + '%');
+    }
+    function setBusy(busy){
+        importBtn.disabled = busy;
+        deleteAllBtn.disabled = busy;
+        if (linkImagesBtn) linkImagesBtn.disabled = busy;
+        if (repairGroupsBtn) repairGroupsBtn.disabled = busy;
+    }
+
+    if (linkImagesBtn) {
+        linkImagesBtn.addEventListener('click', () => {
+            window.open('link-images.html', '_blank', 'noopener');
+        });
+    }
+
+    function normalizeHeader(s){
+        return String(s||'')
+            .toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+            .replace(/[^a-z0-9]/g,'');
+    }
+
+    // ================= Import identity normalization =================
+
+    // Product identity is NOT just the raw designation.
+    // Many supplier exports reuse a generic designation (for example
+    // "CLASSIC LEATHER") for several different model families. The mother
+    // product is therefore identified by BOTH:
+    //   1) a normalized designation, and
+    //   2) the model-family/base portion of CodeModele.
+    //
+    // The color is the varying suffix of CodeModele. The suffix length is not
+    // assumed globally; it is inferred from the code's actual structure.
+
+    function canonicalText(s){
+        return String(s||'')
+            .trim()
+            .toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+            .replace(/[^a-z0-9]/g,'');
+    }
+
+    function canonicalDesignation(s){
+        return canonicalText(s);
+    }
+
+    function canonicalCodeModele(s){
+        return String(s||'')
+            .replace(/_X000D_/gi,'')
+            .replace(/[\r\n]+/g,'')
+            .trim()
+            .toUpperCase()
+            .replace(/\s+/g,'');
+    }
+
+    // Code families found in the supplied workbook:
+    //   9 digits      -> first 7 = model family, last 2 = color
+    //   7 digits      -> first 5 = model family, last 2 = color
+    //   letters+4dig  -> first 4 = model family, last 2 = color
+    //   1 letter+5dig -> first 5 = model family, last 1 = color
+    //   hyphenated    -> everything before the final '-' = model family,
+    //                     final segment = color variant (often a word/colorway)
+    // Other/unrecognized formats are kept whole unless the adaptive fallback
+    // finds a strong repeated prefix within the same normalized designation.
+    function structuralModelBase(code){
+        const c = canonicalCodeModele(code);
+        if(!c) return '';
+
+        if(/^\d{9}$/.test(c)) return c.slice(0,-2);
+        if(/^\d{7}$/.test(c)) return c.slice(0,-2);
+        if(/^[A-Z]+\d{4}$/.test(c)) return c.slice(0,-2);
+        if(/^[A-Z]\d{5}$/.test(c)) return c.slice(0,-1);
+
+        const dash = c.lastIndexOf('-');
+        if(dash >= 2 && dash < c.length-1){
+            return c.slice(0,dash);
+        }
+
+        return c;
+    }
+
+    // Adaptive fallback for future exports containing a different code shape.
+    // We deliberately require a strong common prefix instead of the dangerous
+    // "first 2 characters" rule. A match needs at least 4 shared characters,
+    // at least ~60% of the shorter code, and no more than 4 trailing characters.
+    function adaptiveModelBase(code, peerCodes){
+        const c = canonicalCodeModele(code);
+        if(!c) return '';
+
+        let best = c;
+        for(const peerRaw of (peerCodes||[])){
+            const peer = canonicalCodeModele(peerRaw);
+            if(!peer || peer === c) continue;
+
+            let n = 0;
+            const max = Math.min(c.length, peer.length);
+            while(n < max && c[n] === peer[n]) n++;
+
+            const shorter = Math.min(c.length, peer.length);
+            const suffixA = c.length - n;
+            const suffixB = peer.length - n;
+
+            if(n >= 4 && n >= Math.ceil(shorter * 0.6) && suffixA <= 4 && suffixB <= 4){
+                if(n > best.length || best === c) best = c.slice(0,n);
+            }
+        }
+        return best;
+    }
+
+    function modelBaseForCode(code, peerCodes){
+        const c = canonicalCodeModele(code);
+        const structural = structuralModelBase(c);
+        // Recognized workbook structures are authoritative.
+        if(structural !== c) return structural;
+        return adaptiveModelBase(c, peerCodes);
+    }
+
+    function canonicalSize(s){
+        let v = String(s||'').trim().toUpperCase();
+        v = v.replace(/\s+/g,'')
+            .replace(/,/g,'.')
+            .replace(/½/g,'.5')
+            .replace(/¼/g,'.25')
+            .replace(/¾/g,'.75');
+        if(/^\d+\.$/.test(v)) v = v.slice(0,-1);
+        return v;
+    }
+
+    function cleanCategory(s){
+        if(s == null) return null;
+        const v = String(s).trim();
+        if(!v) return null;
+        const lower = v.toLowerCase();
+        if(lower === '(vide)' || lower === 'vide' || lower === 'null' || lower === 'n/a' || v === '-') return null;
+        return v;
+    }
+
+    function findImportHeader(rows){
+        // Be tolerant of exports that put a title/blank row above the real header.
+        const maxScan = Math.min(rows.length, 25);
+        let bestIndex = 0;
+        let bestScore = -1;
+
+        for(let r=0; r<maxScan; r++){
+            const raw = rows[r] || [];
+            const h = raw.map(normalizeHeader);
+            let score = 0;
+            if(h.some(x => x.includes('codemodele') || x.includes('codemodel') || x.includes('codearticle') || x === 'article' || x === 'reference' || x === 'ref')) score += 6;
+            if(h.some(x => x.includes('designation') || x.includes('produit'))) score += 6;
+            if(h.some(x => x.includes('libelle') || x.includes('taille') || x.includes('size'))) score += 2;
+            if(h.some(x => x.includes('prix'))) score += 1;
+            if(h.some(x => x.includes('codebarre') || x.includes('barcode') || x.includes('ean'))) score += 1;
+            if(score > bestScore){ bestScore = score; bestIndex = r; }
+        }
+
+        return { index: bestIndex, header: (rows[bestIndex] || []).map(normalizeHeader), score: bestScore };
+    }
+
+    function findColumn(header, candidates){
+        for(const h of candidates){
+            const i = header.indexOf(h);
+            if(i !== -1) return i;
+        }
+        return null;
+    }
+
+    // When one human-readable designation contains several distinct model
+    // families, they must also have distinct mother-product names in the DB/UI.
+    // Example: CLASSIC LEATHER + 10 unrelated model families becomes
+    // CLASSIC LEATHER 1 ... CLASSIC LEATHER 10.
+    // Numbering is deterministic (model-base sort), so a later re-import reuses
+    // the same mother products instead of creating duplicates.
+    function applyParsedProductNames(products){
+        const byDesignation = new Map();
+        products.forEach(prod => {
+            if(!byDesignation.has(prod.designation_key)) byDesignation.set(prod.designation_key, []);
+            byDesignation.get(prod.designation_key).push(prod);
+        });
+
+        byDesignation.forEach(group => {
+            group.sort((a,b)=>String(a.model_base||'').localeCompare(String(b.model_base||''), undefined, {numeric:true, sensitivity:'base'}));
+            const count = group.length;
+            const baseName = group[0] && group[0].designation ? group[0].designation.trim() : 'Product';
+            group.forEach((prod, i)=>{
+                prod.designation = count > 1 ? `${baseName} ${i+1}` : baseName;
+            });
+        });
+        return products;
+    }
+
+    // Reads the workbook and groups rows into:
+    //   mother product (normalized designation + model base)
+    //     -> color/model code (CodeModele)
+    //       -> size/price/barcode variants
+    function parseWorkbook(wb){
+        let best = null;
+
+        for(const sheetName of wb.SheetNames){
+            const ws = wb.Sheets[sheetName];
+            const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:true, defval:null });
+            if(!rows.length) continue;
+
+            const hdr = findImportHeader(rows);
+            const h = hdr.header;
+            const hasCode = h.some(x => x.includes('codemodele') || x.includes('codemodel') || x.includes('codearticle') || x === 'article' || x === 'reference' || x === 'ref');
+            const hasDesignation = h.some(x => x.includes('designation') || x.includes('produit'));
+            const score = (hasCode && hasDesignation ? 100000 : 0) + hdr.score * 1000 + rows.length;
+
+            if(!best || score > best.score) best = { sheetName, rows, header: h, headerIndex: hdr.index, score };
+        }
+
+        if(!best) return { products:new Map(), meta:{sheetName:null, skippedRows:0, mergedDesignationGroups:0} };
+
+        const header = best.header;
+        const idx = {
+            codeModele: findColumn(header, ['codemodele','codemodel','codearticle','article','reference','ref']),
+            designation: findColumn(header, ['designation','produit']),
+            sousFamille: findColumn(header, ['sousfamille']),
+            famille: findColumn(header, ['famille']),
+            size: findColumn(header, ['libelle','taille','size']),
+            prix: findColumn(header, ['prix','prixventettc','prixvente','prixttc']),
+            barcode: findColumn(header, ['codebarre','codebarre1','barcode','ean','ean13'])
+        };
+
+        if(idx.codeModele == null || idx.designation == null){
+            return { products:new Map(), meta:{sheetName:best.sheetName, skippedRows:best.rows.length, mergedDesignationGroups:0, invalidHeaders:true} };
+        }
+
+        // Collect peer codes per normalized designation first so the adaptive
+        // fallback can learn a repeated code prefix without merging generic
+        // designations such as CLASSIC LEATHER across unrelated model families.
+        const peerCodesByDesignation = new Map();
+        for(let r=best.headerIndex+1; r<best.rows.length; r++){
+            const row = best.rows[r];
+            if(!row) continue;
+            const code = idx.codeModele!=null && row[idx.codeModele]!=null ? canonicalCodeModele(row[idx.codeModele]) : '';
+            const des = idx.designation!=null && row[idx.designation]!=null ? canonicalDesignation(row[idx.designation]) : '';
+            if(!code || !des) continue;
+            if(!peerCodesByDesignation.has(des)) peerCodesByDesignation.set(des, new Set());
+            peerCodesByDesignation.get(des).add(code);
+        }
+
+        const products = new Map();
+        const codeOwners = new Map();
+        let skippedRows = 0;
+        let codeConflicts = 0;
+
+        for(let r=best.headerIndex+1; r<best.rows.length; r++){
+            const row = best.rows[r];
+            if(!row) { skippedRows++; continue; }
+
+            const codeModele = idx.codeModele!=null && row[idx.codeModele]!=null ? canonicalCodeModele(row[idx.codeModele]) : '';
+            const designationRaw = idx.designation!=null && row[idx.designation]!=null ? String(row[idx.designation]).trim() : '';
+            const designationKey = canonicalDesignation(designationRaw);
+
+            // Ignore footer/total rows and incomplete records.
+            if(!codeModele || !designationKey || /^totalgeneral$/i.test(designationKey)){ skippedRows++; continue; }
+
+            const peerCodes = [...(peerCodesByDesignation.get(designationKey) || [])];
+            const modelBase = modelBaseForCode(codeModele, peerCodes);
+            const productKey = designationKey + '||' + modelBase;
+
+            const famille = idx.famille!=null ? cleanCategory(row[idx.famille]) : null;
+            const sousFamille = idx.sousFamille!=null ? cleanCategory(row[idx.sousFamille]) : null;
+            const sizeRaw = idx.size!=null && row[idx.size]!=null ? String(row[idx.size]).trim() : '';
+            const size = canonicalSize(sizeRaw);
+            const priceRaw = idx.prix!=null ? row[idx.prix] : null;
+            const priceNumber = priceRaw == null || priceRaw === '' ? 0 : Number(priceRaw);
+            const price = Number.isFinite(priceNumber) ? priceNumber : 0;
+            const barcode = idx.barcode!=null && row[idx.barcode]!=null ? String(row[idx.barcode]).trim() : null;
+
+            const previousOwner = codeOwners.get(codeModele);
+            if(previousOwner && previousOwner !== productKey){
+                codeConflicts++;
+                console.warn('CodeModele appears in multiple logical products:', codeModele, previousOwner, productKey);
+                // Keep the first owner. This avoids a single code being silently
+                // inserted into two different parent products.
+                skippedRows++;
+                continue;
+            }
+            codeOwners.set(codeModele, productKey);
+
+            if(!products.has(productKey)){
+                products.set(productKey, {
+                    designation: designationRaw,
+                    designation_key: designationKey,
+                    model_base: modelBase,
+                    famille,
+                    sous_famille: sousFamille,
+                    colors: new Map()
+                });
+            }
+
+            const prod = products.get(productKey);
+            if(!prod.famille && famille) prod.famille = famille;
+            if(!prod.sous_famille && sousFamille) prod.sous_famille = sousFamille;
+
+            if(!prod.colors.has(codeModele)){
+                prod.colors.set(codeModele, {
+                    code_modele: codeModele,
+                    color: 'Color ' + (prod.colors.size + 1),
+                    variants: [],
+                    variantKeys: new Set()
+                });
+            }
+
+            const color = prod.colors.get(codeModele);
+            const variantKey = barcode ? 'barcode:' + barcode : 'size:' + size;
+            if(color.variantKeys.has(variantKey)) continue;
+            color.variantKeys.add(variantKey);
+            color.variants.push({ size, price, barcode });
+        }
+
+        products.forEach(prod => prod.colors.forEach(color => delete color.variantKeys));
+
+        // Helpful diagnostics for generic designations that contain many model families.
+        const designationGroups = new Map();
+        products.forEach(prod => {
+            if(!designationGroups.has(prod.designation_key)){
+                designationGroups.set(prod.designation_key, { name: prod.designation, bases: [] });
+            }
+            designationGroups.get(prod.designation_key).bases.push(prod.model_base);
+        });
+        const genericSplitGroups = [...designationGroups.values()]
+            .filter(g=>g.bases.length>1)
+            .sort((a,b)=>b.bases.length-a.bases.length);
+
+        applyParsedProductNames(products);
+
+        return {
+            products,
+            meta:{
+                sheetName: best.sheetName,
+                skippedRows,
+                codeConflicts,
+                genericSplitGroups
+            }
+        };
+    }
+
+    function getExistingLogicalGroups(product){
+        const designationKey = canonicalDesignation(product && product.designation);
+        const colors = (product && product.product_colors) || [];
+        const peerCodes = colors.map(c => canonicalCodeModele(c.code_modele)).filter(Boolean);
+        const groups = new Map();
+
+        colors.forEach(color => {
+            const code = canonicalCodeModele(color.code_modele);
+            if(!code) return;
+            const base = modelBaseForCode(code, peerCodes);
+            const key = designationKey + '||' + base;
+            if(!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(color);
+        });
+
+        return groups;
+    }
+
+    function stripGeneratedNumber(name){
+        const raw = String(name||'').trim();
+        const m = raw.match(/^(.*)\s+(\d+)$/);
+        return m ? m[1].trim() : raw;
+    }
+
+    // A trailing number is considered an importer-generated suffix when the
+    // database contains a numbered family (NAME 1, NAME 2, ...) or when the
+    // current product itself is visibly mixed across several model families.
+    // This preserves legitimate names such as "ZIG DYNAMICA 4" when they stand
+    // alone.
+    function getGeneratedNumberRoots(){
+        const numbered = new Map();
+        const unsuffixed = new Set();
+        PRODUCTS.forEach(product=>{
+            const raw = String(product && product.designation || '').trim();
+            if(!raw) return;
+            const m = raw.match(/^(.*)\s+(\d+)$/);
+            if(m){
+                const root = canonicalDesignation(m[1]);
+                if(!numbered.has(root)) numbered.set(root,new Set());
+                numbered.get(root).add(m[2]);
+            }else{
+                unsuffixed.add(canonicalDesignation(raw));
+            }
+        });
+        const roots = new Set();
+        numbered.forEach((nums,root)=>{
+            if(nums.size >= 2 || unsuffixed.has(root)) roots.add(root);
+        });
+        return roots;
+    }
+
+    function logicalDesignationForExistingProduct(product, generatedRoots){
+        const raw = String(product && product.designation || '').trim();
+        if(!raw) return '';
+        const colors = product.product_colors || [];
+        const peerCodes = colors.map(c => canonicalCodeModele(c.code_modele)).filter(Boolean);
+        const bases = new Set();
+        colors.forEach(c=>{
+            const code = canonicalCodeModele(c.code_modele);
+            if(code) bases.add(modelBaseForCode(code, peerCodes));
+        });
+        const m = raw.match(/^(.*)\s+(\d+)$/);
+        const rootKey = m ? canonicalDesignation(m[1]) : canonicalDesignation(raw);
+        if(bases.size > 1 || (m && generatedRoots && generatedRoots.has(rootKey))){
+            return m ? m[1].trim() : raw;
+        }
+        return raw;
+    }
+
+    function getExistingLogicalGroups(product){
+        const generatedRoots = getGeneratedNumberRoots();
+        const rootDesignation = logicalDesignationForExistingProduct(product, generatedRoots);
+        const colors = (product && product.product_colors) || [];
+        const peerCodes = colors.map(c => canonicalCodeModele(c.code_modele)).filter(Boolean);
+        const groups = new Map();
+
+        colors.forEach(color => {
+            const code = canonicalCodeModele(color.code_modele);
+            if(!code) return;
+            const base = modelBaseForCode(code, peerCodes);
+            const key = canonicalDesignation(rootDesignation) + '||' + base;
+            if(!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(color);
+        });
+        return groups;
+    }
+
+    function buildExistingLogicalIndex(){
+        const generatedRoots = getGeneratedNumberRoots();
+        const index = new Map();
+        PRODUCTS.forEach(product=>{
+            const root = logicalDesignationForExistingProduct(product, generatedRoots);
+            const rootKey = canonicalDesignation(root);
+            if(!rootKey) return;
+            const colors = product.product_colors || [];
+            if(!colors.length) return;
+            const peerCodes = colors.map(c=>canonicalCodeModele(c.code_modele)).filter(Boolean);
+            const bases = new Set();
+            colors.forEach(c=>{
+                const code=canonicalCodeModele(c.code_modele);
+                if(code) bases.add(modelBaseForCode(code,peerCodes));
+            });
+            bases.forEach(base=>{
+                const key=rootKey+'||'+base;
+                const cur=index.get(key);
+                if(!cur || colors.length > (cur.product_colors||[]).length) index.set(key, product);
+            });
+        });
+        return index;
+    }
+
+    function countMixedExistingProducts(){
+        let count = 0;
+        PRODUCTS.forEach(p => { if(getExistingLogicalGroups(p).size > 1) count++; });
+        return count;
+    }
+
+    // Rebuild ALL existing product ownership from product_colors. This is much
+    // safer than renaming a product and hoping the UI follows: every color row
+    // is explicitly assigned to exactly one logical mother product. Variants
+    // and images remain untouched because they continue to point at the same
+    // product_color rows.
+    async function repairExistingGrouping(){
+        // Refresh first so rebuild always works from the latest database state.
+        await loadProducts();
+        const generatedRoots = getGeneratedNumberRoots();
+        const groups = new Map();
+
+        PRODUCTS.forEach(product=>{
+            const rootDesignation = logicalDesignationForExistingProduct(product, generatedRoots);
+            const designationKey = canonicalDesignation(rootDesignation);
+            if(!designationKey) return;
+
+            const colors = product.product_colors || [];
+            const peerCodes = colors.map(c=>canonicalCodeModele(c.code_modele)).filter(Boolean);
+            colors.forEach(color=>{
+                const code = canonicalCodeModele(color.code_modele);
+                if(!code) return;
+                const base = modelBaseForCode(code, peerCodes);
+                const key = designationKey+'||'+base;
+                if(!groups.has(key)) groups.set(key, {
+                    rootDesignation,
+                    modelBase: base,
+                    colors: [],
+                    sourceIds: new Set()
+                });
+                const g=groups.get(key);
+                g.colors.push(color);
+                g.sourceIds.add(product.id);
+            });
+        });
+
+        // Also catch empty product rows so they don't receive a misleading name.
+        const groupsByDesignation = new Map();
+        groups.forEach((g,key)=>{
+            if(!groupsByDesignation.has(canonicalDesignation(g.rootDesignation))) groupsByDesignation.set(canonicalDesignation(g.rootDesignation), []);
+            groupsByDesignation.get(canonicalDesignation(g.rootDesignation)).push([key,g]);
+        });
+
+        const existingCandidates = new Map();
+        PRODUCTS.forEach(product=>{
+            const root=logicalDesignationForExistingProduct(product);
+            const rootKey=canonicalDesignation(root);
+            if(!rootKey) return;
+            if(!existingCandidates.has(rootKey)) existingCandidates.set(rootKey, []);
+            existingCandidates.get(rootKey).push({product});
+        });
+
+        let repairedProducts=0, movedColors=0, deletedEmpty=0, unableToDelete=0, renamedProducts=0;
+        const keepProductIds=new Set();
+
+        for(const [rootKey, entries] of groupsByDesignation){
+            entries.sort((a,b)=>String(a[1].modelBase).localeCompare(String(b[1].modelBase), undefined, {numeric:true,sensitivity:'base'}));
+            const multiple=entries.length>1;
+            const baseName=entries[0][1].rootDesignation.trim() || 'Product';
+            const candidates=(existingCandidates.get(rootKey)||[]).slice();
+            const usedCandidates=new Set();
+
+            for(let i=0;i<entries.length;i++){
+                const [logicalKey,g]=entries[i];
+                // Prefer an existing product that already contains one of these
+                // colors. This preserves the original product row where possible.
+                let destination=null;
+                let bestCount=-1;
+                for(const cand of candidates){
+                    if(usedCandidates.has(cand.product.id)) continue;
+                    const count=(g.sourceIds.has(cand.product.id)) ? (cand.product.product_colors||[]).filter(c=>{
+                        const code=canonicalCodeModele(c.code_modele); if(!code) return false;
+                        return logicalKey === rootKey+'||'+modelBaseForCode(code,(cand.product.product_colors||[]).map(x=>canonicalCodeModele(x.code_modele)))
+                    }).length : 0;
+                    if(count>bestCount){bestCount=count; destination=count>0?cand.product:null;}
+                }
+
+                if(!destination){
+                    for(const cand of candidates){
+                        if(!usedCandidates.has(cand.product.id)) { destination=cand.product; break; }
+                    }
+                }
+
+                if(!destination){
+                    const {data:newRow,error:newErr}=await sb.from('products').insert({
+                        designation: baseName,
+                        famille: null,
+                        sous_famille: null
+                    }).select().single();
+                    if(newErr) throw newErr;
+                    destination=newRow;
+                    repairedProducts++;
+                }
+                usedCandidates.add(destination.id);
+                keepProductIds.add(destination.id);
+
+                const desiredName=multiple ? `${baseName} ${i+1}` : baseName;
+                if(destination.designation !== desiredName){
+                    const {error}=await sb.from('products').update({designation:desiredName}).eq('id',destination.id);
+                    if(error) throw error;
+                    renamedProducts++;
+                }
+
+                const ids=g.colors.map(c=>c.id).filter(Boolean);
+                if(ids.length){
+                    const {error}=await sb.from('product_colors').update({product_id:destination.id}).in('id',ids);
+                    if(error) throw error;
+                    movedColors+=ids.length;
+                }
+            }
+        }
+
+        // Delete every product row that is now empty. No child variants are lost:
+        // product_variants belong to product_colors, and we only delete a product
+        // after confirming it has no colors left.
+        for(const product of PRODUCTS){
+            if(keepProductIds.has(product.id)) continue;
+            const {data:remaining,error:checkErr}=await sb.from('product_colors').select('id').eq('product_id',product.id).limit(1);
+            if(checkErr) { unableToDelete++; continue; }
+            if(!remaining || remaining.length===0){
+                const {error:deleteErr}=await sb.from('products').delete().eq('id',product.id);
+                if(deleteErr) unableToDelete++;
+                else deletedEmpty++;
+            }
+        }
+
+        await loadProducts();
+        return {repairedProducts,movedColors,deletedEmpty,unableToDelete,renamedProducts};
+    }
+
+    async function repairAndRenameProductGroups(showAlert=true){
+        setBusy(true); showProgress(true);
+        try{
+            setProgress(5,'Rebuilding product groups…');
+            const result=await repairExistingGrouping();
+            setProgress(100,'Done');
+            if(showAlert){
+                alert(`Product groups rebuilt: ${result.movedColors} color(s) reassigned`+
+                    (result.repairedProducts?`, ${result.repairedProducts} product(s) created`:'')+
+                    (result.renamedProducts?`, ${result.renamedProducts} product name(s) updated`:'')+
+                    (result.deletedEmpty?`, ${result.deletedEmpty} empty product(s) removed`:'')+
+                    (result.unableToDelete?`, ${result.unableToDelete} could not be removed`:'')+'.');
+            }
+            return result;
+        }catch(err){
+            console.error('Product-group rebuild failed:',err);
+            if(showAlert) alert('Product-group rebuild failed: '+err.message);
+            throw err;
+        }finally{
+            setBusy(false); setTimeout(()=>showProgress(false),1000);
+        }
+    }
+
+    async function insertAll(parsed){
+        const products = [...parsed.products.values()];
+
+        // First normalize any legacy mixed parent products currently in the DB.
+        await repairExistingGrouping();
+
+        // Build the real logical index AFTER repair. Never use designation alone
+        // as a lookup key: generic names such as CLASSIC LEATHER contain many
+        // independent model families.
+        const existing = buildExistingLogicalIndex();
+
+        let totalVariants = 0;
+
+        products.forEach(p => p.colors.forEach(c => totalVariants += c.variants.length));
+        let done = 0;
+        let failedProducts = 0;
+        let reusedProducts = 0;
+
+        showProgress(true);
+        setBusy(true);
+
+        for(const p of products){
+            try{
+                const identityKey = p.designation_key + '||' + p.model_base;
+                let prodRow = existing.get(identityKey);
+
+                if(!prodRow){
+                    const { data, error } = await sb
+                        .from('products')
+                        .insert({ designation: p.designation, famille: p.famille, sous_famille: p.sous_famille })
+                        .select()
+                        .single();
+                    if(error) throw error;
+                    prodRow = data;
+                    existing.set(identityKey, prodRow);
+                }else{
+                    reusedProducts++;
+                    const update = {};
+                    if(p.designation && prodRow.designation !== p.designation) update.designation = p.designation;
+                    if(p.famille && !cleanCategory(prodRow.famille)) update.famille = p.famille;
+                    if(p.sous_famille && !cleanCategory(prodRow.sous_famille)) update.sous_famille = p.sous_famille;
+                    if(Object.keys(update).length){
+                        const { error } = await sb.from('products').update(update).eq('id', prodRow.id);
+                        if(error) throw error;
+                    }
+                }
+
+                const colorsArr = [...p.colors.values()];
+                const colorRows = colorsArr.map(c => ({
+                    product_id: prodRow.id,
+                    code_modele: c.code_modele,
+                    color: c.color
+                }));
+                const { data: colorData, error: colorErr } = await sb
+                    .from('product_colors')
+                    .upsert(colorRows, { onConflict: 'code_modele' })
+                    .select();
+                if(colorErr) throw colorErr;
+
+                const colorIdByCode = {};
+                colorData.forEach(c => { colorIdByCode[c.code_modele] = c.id; });
+
+                const variantRows = [];
+                colorsArr.forEach(c => {
+                    const colorId = colorIdByCode[c.code_modele];
+                    c.variants.forEach(v => {
+                        variantRows.push({ color_id: colorId, size: v.size, price: v.price, barcode: v.barcode });
+                    });
+                });
+
+                if(variantRows.length){
+                    const { error: varErr } = await sb
+                        .from('product_variants')
+                        .upsert(variantRows, { onConflict: 'barcode', ignoreDuplicates: false });
+                    if(varErr) throw varErr;
+                }
+            }catch(err){
+                console.error('Import failed for product "' + p.designation + '":', err);
+                failedProducts++;
+            }
+
+            done += [...p.colors.values()].reduce((n,c)=>n+c.variants.length, 0);
+            setProgress(totalVariants ? Math.round((done/totalVariants)*100) : 100);
+        }
+
+        setProgress(100, 'Done');
+        setBusy(false);
+        await loadProducts();
+        setTimeout(()=>showProgress(false), 800);
+
+        alert(
+            `Import finished: ${products.length - failedProducts}/${products.length} products processed` +
+            `, ${reusedProducts} existing products reused` +
+            (failedProducts ? `, ${failedProducts} failed (see console).` : '.')
+        );
+    }
+
+    if (repairGroupsBtn) {
+        repairGroupsBtn.addEventListener('click', async () => {
+            if(!confirm('Rebuild product groups now? This will separate unrelated model families into distinct mother products, keep colors/images/sizes attached, and rename only generated duplicate groups.')) return;
+            try{ await repairAndRenameProductGroups(true); }catch(_err){}
+        });
+    }
+
+    importBtn.addEventListener('click', () => importFile.click());
+
+    importFile.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
+        try{
+            const buf = await file.arrayBuffer();
+            const wb = XLSX.read(buf, { type: 'array' });
+            const parsed = parseWorkbook(wb);
+            if(parsed.meta && parsed.meta.invalidHeaders){
+                alert("Couldn't find recognizable columns (CodeModele / designation). Please check the Excel headers.");
+                return;
+            }
+            if(parsed.products.size === 0){
+                alert("No importable product rows were found in the workbook.");
+                return;
+            }
+            const colorCount = [...parsed.products.values()].reduce((n,p)=>n+p.colors.size, 0);
+            const variantCount = [...parsed.products.values()].reduce((n,p)=>n+[...p.colors.values()].reduce((m,c)=>m+c.variants.length,0),0);
+            const sheetLabel = parsed.meta && parsed.meta.sheetName ? `Sheet: ${parsed.meta.sheetName}. ` : '';
+            const skippedLabel = parsed.meta && parsed.meta.skippedRows ? ` ${parsed.meta.skippedRows} rows ignored.` : '';
+            let exampleLabel = '';
+            if(parsed.meta && parsed.meta.genericSplitGroups && parsed.meta.genericSplitGroups.length){
+                const top = parsed.meta.genericSplitGroups.slice(0,3)
+                    .map(g=>`${g.name}: ${g.bases.length} model groups (${g.bases.slice(0,6).join(', ')}${g.bases.length>6 ? ', …' : ''})`)
+                    .join('; ');
+                exampleLabel = `\n\nExamples of designations split into distinct model families: ${top}.`;
+            }
+            const mixedExisting = countMixedExistingProducts();
+            const repairLabel = mixedExisting
+                ? `\n\nExisting database check: ${mixedExisting} product(s) currently contain multiple model families from an older grouping rule. They will be split automatically while keeping their existing colors and images.`
+                : '';
+            if(!confirm(`${sheetLabel}Found ${parsed.products.size} logical products, ${colorCount} colors and ${variantCount} size variants.${skippedLabel}${parsed.meta && parsed.meta.codeConflicts ? ` ${parsed.meta.codeConflicts} code conflicts were ignored.` : ''}${exampleLabel}${repairLabel}\n\nGrouping uses normalized designation + the inferred CodeModele model family. It does NOT group a generic designation by itself, and it does NOT assume the color suffix is always 2 characters. Continue?`)) return;
+            await insertAll(parsed);
+        }catch(err){
+            alert('Could not read this file: ' + err.message);
+        }finally{
+            e.target.value = '';
+        }
+    });
+
+    /* ================= Delete all ================= */
+
+    deleteAllBtn.addEventListener('click', async () => {
+        if(!confirm('Delete ALL products, colors and variants? This cannot be undone.')) return;
+        setBusy(true);
+        showProgress(true);
+        const ALL = '00000000-0000-0000-0000-000000000000';
+        try{
+            setProgress(10, 'Deleting variants…');
+            await sb.from('product_variants').delete().neq('id', ALL);
+            setProgress(45, 'Deleting colors…');
+            await sb.from('product_colors').delete().neq('id', ALL);
+            setProgress(80, 'Deleting products…');
+            await sb.from('products').delete().neq('id', ALL);
+            setProgress(100, 'Done');
+        }catch(err){
+            alert('Delete failed: ' + err.message);
+        }
+        setBusy(false);
+        await loadProducts();
+        setTimeout(()=>showProgress(false), 800);
+    });
+
+    loadProducts();
+</script>
+</body>
+</html>

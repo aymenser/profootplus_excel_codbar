@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Link Product Images</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <style>
+    :root {
+      --ink: #14171c;
+      --paper: #f6f5f1;
+      --panel: #ffffff;
+      --line: #e2e0d8;
+      --accent: #2a5c4a;
+      --accent-soft: #e5efe9;
+      --warn: #a34a1f;
+      --warn-soft: #fbeee4;
+      --muted: #77756d;
+      --slot-a: #2a5c4a;
+      --slot-b: #4a6fa5;
+      --slot-c: #8a5a9e;
+      --slot-d: #b8863f;
+      --slot-e: #a34a4a;
+      --mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+      --sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body { background: var(--paper); color: var(--ink); font-family: var(--sans); padding: 28px; line-height: 1.5; }
+    .wrap { max-width: 1440px; margin: 0 auto; }
+
+    header.top {
+      display: flex; justify-content: space-between; align-items: flex-end;
+      gap: 20px; margin-bottom: 22px; border-bottom: 2px solid var(--ink); padding-bottom: 16px;
+    }
+    header.top h1 { font-size: 22px; margin: 0; font-weight: 700; }
+    header.top .sub { font-family: var(--mono); font-size: 11px; color: #666; text-transform: uppercase; }
+    .header-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+    .top-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+
+    .hint { font-size: 11.5px; color: var(--muted); padding: 10px 0; }
+    .error-hint { color: var(--warn); }
+
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 18px; }
+    .top-controls { margin-bottom: 22px; }
+    .top-controls h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 8px; }
+
+    .admin-btn, .commit-all-btn {
+      font-family: var(--mono); font-size: 11px; padding: 8px 12px; border: 1px solid var(--line);
+      background: var(--panel); color: var(--ink); border-radius: 3px; cursor: pointer;
+      transition: background .15s, border-color .15s, opacity .15s;
+    }
+    .admin-btn:hover:not(:disabled), .commit-all-btn:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+    .admin-btn:disabled, .commit-all-btn:disabled { opacity: .55; cursor: default; }
+    .commit-all-btn { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 700; }
+    .commit-all-btn:hover:not(:disabled) { background: #224b3d; border-color: #224b3d; }
+    .commit-all-status { font-family: var(--mono); font-size: 10.5px; color: var(--accent); }
+    .commit-all-status.is-error { color: var(--warn); }
+
+    .filter-bar { display: none; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .filter-field { display: flex; flex-direction: column; gap: 5px; }
+    .filter-field label { font-family: var(--mono); font-size: 10px; text-transform: uppercase; color: #666; }
+    .filter-field select { font-family: var(--sans); font-size: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 3px; min-width: 150px; background: #fdfdfc; color: var(--ink); }
+    .filter-toggle-row { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: #444; cursor: pointer; user-select: none; padding-bottom: 9px; }
+    .filter-toggle-row input { cursor: pointer; }
+    .filter-clear-btn { font-family: var(--mono); font-size: 11px; padding: 8px 12px; background: transparent; color: #777; border: 1px solid var(--line); border-radius: 3px; cursor: pointer; height: fit-content; }
+    .filter-clear-btn:hover { border-color: var(--warn); color: var(--warn); }
+    .filter-clear-btn[aria-pressed="true"] { background: #2b2f38; color: #fff; border-color: #2b2f38; }
+    .filter-count { font-family: var(--mono); font-size: 10.5px; color: #888; align-self: center; }
+
+    .progress-bar-track { width: min(360px, 42vw); height: 6px; background: #ece9e2; border-radius: 3px; overflow: hidden; display: none; }
+    .progress-bar-track.is-active { display: block; }
+    .progress-bar-fill { height: 100%; width: 0; background: linear-gradient(90deg, #6b9c78, #4f8b5e); border-radius: 3px; transition: width .2s ease; }
+    .progress-bar-fill.is-complete { background: linear-gradient(90deg, #4f8b5e, #3c7a4a); }
+
+    .product-group { background: #fff; border: 1px solid var(--line); border-radius: 5px; margin: 0 0 18px; overflow: hidden; }
+    .product-group-head { display: flex; justify-content: space-between; align-items: center; background: #f0eee8; border-bottom: 1px solid var(--line); padding: 12px 14px; }
+    .pg-name { font-size: 14px; font-weight: 700; }
+    .pg-meta { display: block; font-family: var(--mono); font-size: 10px; color: #777; margin-top: 2px; }
+    .product-group-colors { padding: 10px; }
+
+    .product-row { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
+    .product-row:last-child { margin-bottom: 0; }
+    .row-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: #faf9f6; }
+    .row-title { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+    .row-title b { font-family: var(--mono); font-size: 9.5px; color: #777; }
+    .rt-name { font-size: 12px; font-weight: 700; }
+    .cat-tag { font-family: var(--mono); font-size: 9px; text-transform: uppercase; color: #777; border: 1px solid var(--line); padding: 3px 6px; border-radius: 2px; background: #fff; }
+    .existing-badge { font-family: var(--mono); font-size: 9px; padding: 3px 6px; border-radius: 2px; background: #f2f1ec; color: #777; }
+    .existing-badge.has-images { color: var(--accent); background: var(--accent-soft); }
+    .row-head-right { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
+    .row-status { font-family: var(--mono); font-size: 9.5px; color: #777; min-width: 150px; text-align: right; }
+    .search-window-btn, .retry-btn, .commit-row-btn {
+      font-family: var(--mono); font-size: 10px; padding: 6px 9px; background: var(--panel); color: var(--ink);
+      border: 1px solid var(--line); border-radius: 3px; cursor: pointer; white-space: nowrap;
+    }
+    .search-window-btn:hover, .retry-btn:hover, .commit-row-btn:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+    .retry-btn { color: var(--warn); border-color: var(--warn); }
+    .retry-btn:hover:not(:disabled) { background: var(--warn-soft); }
+    .commit-row-btn { color: var(--accent); border-color: var(--accent); font-weight: 700; }
+    .commit-row-btn.is-committed { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .commit-row-btn:disabled { opacity: .6; cursor: default; }
+
+    .slots { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 8px; }
+    .slot { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; min-height: 245px; display: flex; flex-direction: column; transition: box-shadow .12s, border-color .12s; position: relative; }
+    .slot-head { padding: 8px 9px; font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: #fff; display: flex; justify-content: space-between; }
+    .slot[data-slot="A"] .slot-head { background: var(--slot-a); }
+    .slot[data-slot="B"] .slot-head { background: var(--slot-b); }
+    .slot[data-slot="C"] .slot-head { background: var(--slot-c); }
+    .slot[data-slot="D"] .slot-head { background: var(--slot-d); }
+    .slot[data-slot="E"] .slot-head { background: var(--slot-e); }
+    .slot-body { flex: 1; display: flex; align-items: center; justify-content: center; padding: 10px; background: #fbfbfa; position: relative; }
+    .slot-body img { max-width: 100%; max-height: 205px; object-fit: contain; display: block; }
+    .slot-body .empty { font-family: var(--mono); font-size: 10px; color: #b8b6ac; text-align: center; padding: 20px; }
+    .slot-delete { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; border: none; background: rgba(20,23,28,.72); color: #fff; font-size: 14px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 3; }
+    .slot-delete:hover { background: var(--warn); }
+    .slot-drop-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-family: var(--mono); font-size: 10px; line-height: 1.4; color: #fff; background: rgba(42,92,74,.88); opacity: 0; pointer-events: none; transition: opacity .12s ease; z-index: 5; border-radius: 3px; }
+    .slot.slot-dragover { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+    .slot.slot-dragover .slot-drop-hint { opacity: 1; }
+    .slot-tier-badge { position: absolute; top: 7px; left: 7px; z-index: 2; font-family: var(--mono); font-size: 8px; text-transform: uppercase; letter-spacing: .02em; padding: 3px 5px; border-radius: 2px; background: rgba(20,23,28,.72); color: #fff; max-width: calc(100% - 38px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .slot-tier-badge-manual { background: var(--accent); }
+    .slot-tier-badge-unverified { background: #a83a2e; }
+
+    .quick-picks { margin: 0 8px 8px; padding: 8px 10px; background: #fafaf8; border: 1px dashed var(--line); border-radius: 4px; }
+    .quick-picks-hint { font-family: var(--mono); font-size: 9.5px; color: #888; margin-bottom: 6px; }
+    .quick-picks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); gap: 5px; }
+    .quick-pick-thumb { position: relative; aspect-ratio: 1; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; cursor: pointer; background: #fff; transition: transform .1s, border-color .1s; }
+    .quick-pick-thumb:hover { border-color: var(--accent); transform: scale(1.05); z-index: 2; }
+    .quick-pick-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .quick-pick-thumb-used { opacity: .5; border-color: var(--accent); }
+    .quick-pick-thumb-used::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(42,92,74,.75); color: #fff; font-size: 13px; font-weight: 700; }
+
+    .copy-log-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+    .copy-log-btn { font-family: var(--mono); font-size: 10.5px; padding: 7px 11px; background: var(--ink); color: #fff; border: none; border-radius: 3px; cursor: pointer; }
+    .copy-log-btn.is-copied { background: var(--accent); }
+    .copy-log-status { font-family: var(--mono); font-size: 10px; color: var(--accent); }
+    .copy-log-status.is-error { color: var(--warn); }
+    .copy-log-fallback { display: none; width: 100%; max-width: 900px; height: 140px; margin-top: 8px; font-family: var(--mono); font-size: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 3px; }
+
+    .drag-ghost { position: fixed; top: 0; left: 0; z-index: 9999; pointer-events: none; width: 90px; height: 90px; border-radius: 4px; overflow: hidden; border: 2px solid var(--accent); box-shadow: 0 6px 18px rgba(0,0,0,.35); background: #fff; opacity: .92; transform: translate(-9999px,-9999px); }
+    .drag-ghost img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    @media (max-width: 1050px) {
+      body { padding: 18px; }
+      .slots { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .slot { min-height: 210px; }
+    }
+    @media (max-width: 700px) {
+      header.top { align-items: flex-start; flex-direction: column; }
+      .header-actions { align-items: flex-start; }
+      .row-head { align-items: flex-start; flex-direction: column; }
+      .row-head-right { justify-content: flex-start; }
+      .row-status { min-width: 0; text-align: left; }
+      .slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Link Product Images</h1>
+      <div class="sub">Supabase Catalog · Bing Auto-Sourcing · Review Before Commit</div>
+    </div>
+    <div class="header-actions">
+      <div class="top-actions">
+        <button type="button" class="admin-btn" id="backBtn">← Back to Products</button>
+        <button type="button" class="commit-all-btn" id="commitAllBtn">Commit All</button>
+        <span class="commit-all-status" id="commitAllStatus"></span>
+      </div>
+      <div class="sub" id="statusHeader">loading catalog…</div>
+      <div class="progress-bar-track" id="progressBarTrack"><div class="progress-bar-fill" id="progressBarFill"></div></div>
+    </div>
+  </header>
+
+  <div class="hint" id="pageHint">Loading products and their colors from Supabase…</div>
+
+  <div class="panel top-controls">
+    <h2>Image Linking</h2>
+    <div class="hint" style="padding:0;">Each parent product is grouped below. Every color/model code gets its own independent 5-image search. Changes stay local until Commit or Commit All.</div>
+    <div class="copy-log-row" id="copyLogContainer"></div>
+
+    <div class="filter-bar" id="filterBar">
+      <div class="filter-field">
+        <label for="filterBrand">Designation</label>
+        <select id="filterBrand"><option value="all">All Designations</option></select>
+      </div>
+      <div class="filter-field">
+        <label for="filterCategory">Category</label>
+        <select id="filterCategory"><option value="all">All Categories</option></select>
+      </div>
+      <div class="filter-field">
+        <label for="filterTier">Tier</label>
+        <select id="filterTier"><option value="all">All Tiers</option></select>
+      </div>
+      <label class="filter-toggle-row">
+        <input type="checkbox" id="filterAttentionToggle">
+        <span>Needs attention</span>
+      </label>
+      <button type="button" id="sortByTierBtn" class="filter-clear-btn" aria-pressed="false">Sort by Tier</button>
+      <button type="button" id="filterClearBtn" class="filter-clear-btn">Clear Filters</button>
+      <button type="button" id="resetTrustBtn" class="filter-clear-btn" title="Clear learned domain-trust scores stored in this browser.">Reset Learned Trust</button>
+      <span class="filter-count" id="filterCount"></span>
+    </div>
+  </div>
+
+  <main>
+    <div class="product-rows" id="productRows">
+      <div class="hint">Loading products…</div>
+    </div>
+  </main>
+</div>
+
+<script src="link-images.js"></script>
+<script>
+  document.getElementById('backBtn').addEventListener('click', () => {
+    window.location.href = 'main.html';
+  });
+</script>
+</body>
+</html>
