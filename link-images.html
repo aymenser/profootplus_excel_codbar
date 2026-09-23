@@ -57,6 +57,10 @@
     .commit-all-btn:hover:not(:disabled) { background: #224b3d; border-color: #224b3d; }
     .commit-all-status { font-family: var(--mono); font-size: 10.5px; color: var(--accent); }
     .commit-all-status.is-error { color: var(--warn); }
+    .api-config { margin: 12px 0 14px; padding: 10px 12px; border: 1px solid var(--line); background: #faf9f6; border-radius: 3px; }
+    .api-config-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .api-config input { flex: 1 1 360px; min-width: 0; font-family: var(--mono); font-size: 11px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 3px; background: #fff; color: var(--ink); }
+    .api-config-status { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 7px; word-break: break-word; }
 
     .filter-bar { display: none; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
     .filter-field { display: flex; flex-direction: column; gap: 5px; }
@@ -121,6 +125,7 @@
     .slot-tier-badge { position: absolute; top: 7px; left: 7px; z-index: 2; font-family: var(--mono); font-size: 8px; text-transform: uppercase; letter-spacing: .02em; padding: 3px 5px; border-radius: 2px; background: rgba(20,23,28,.72); color: #fff; max-width: calc(100% - 38px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .slot-tier-badge-manual { background: var(--accent); }
     .slot-tier-badge-unverified { background: #a83a2e; }
+    .slot-tier-badge-db { background: #6b6a63; }
 
     .quick-picks { margin: 0 8px 8px; padding: 8px 10px; background: #fafaf8; border: 1px dashed var(--line); border-radius: 4px; }
     .quick-picks-hint { font-family: var(--mono); font-size: 9.5px; color: #888; margin-bottom: 6px; }
@@ -178,6 +183,14 @@
 
   <div class="panel top-controls">
     <h2>Image Linking</h2>
+    <div class="api-config">
+      <div class="hint" style="padding:0 0 7px;"><b>Backend API</b> — GitHub Pages cannot use <code>localhost:3001</code> from a phone. Leave this empty to browse saved DB images only, or enter your deployed HTTPS Node API.</div>
+      <div class="api-config-row">
+        <input id="apiServerInput" type="url" inputmode="url" autocomplete="off" placeholder="https://your-backend.example.com">
+        <button type="button" class="admin-btn" id="apiServerSaveBtn">Save API</button>
+      </div>
+      <div class="api-config-status" id="apiServerStatus"></div>
+    </div>
     <div class="hint" style="padding:0;">Each parent product is grouped below. Every color/model code gets its own independent 5-image search. Changes stay local until Commit or Commit All.</div>
     <div class="copy-log-row" id="copyLogContainer"></div>
 
@@ -212,7 +225,7 @@
   </main>
 </div>
 
-<script src="link-images.js"></script>
+<script src="link-images.js?v=20260923"></script>
 <script>
   document.getElementById('backBtn').addEventListener('click', () => {
     window.location.href = 'main.html';

@@ -8,7 +8,35 @@ const state = {
 };
 
 const SLOTS = ['A', 'B', 'C', 'D', 'E'];
-const SERVER_BASE = 'http://localhost:3001';
+const LOCAL_SERVER_BASE = 'http://localhost:3001';
+// GitHub Pages cannot reach a Node server through `localhost:3001`.
+// For production, set the API URL once using `?api=https://...` or the
+// Backend API field in the page. The value is stored in localStorage.
+const DEFAULT_PRODUCTION_SERVER_BASE = '';
+
+function normalizeServerBase(value) {
+    return String(value || '').trim().replace(/\/$/, '');
+}
+
+function getServerBase() {
+    const isLocalPage = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = normalizeServerBase(params.get('api'));
+
+    if (fromQuery) {
+        try { localStorage.setItem('profootplus_server_base', fromQuery); } catch (e) {}
+        return fromQuery;
+    }
+
+    try {
+        const stored = normalizeServerBase(localStorage.getItem('profootplus_server_base'));
+        if (stored) return stored;
+    } catch (e) {}
+
+    return isLocalPage ? LOCAL_SERVER_BASE : normalizeServerBase(DEFAULT_PRODUCTION_SERVER_BASE);
+}
+
+const SERVER_BASE = getServerBase();
 
 // Supabase is used only by this linking page for loading catalog/color
 // records and committing the selected image URLs back to product_colors.images.
@@ -237,6 +265,35 @@ function populateBrandOptions(items) {
         brands.map(b => `<option value="${b.replace(/"/g, '&quot;')}">${b}</option>`).join('');
 }
 
+function setupServerConfigUI() {
+    const apiInput = $('apiServerInput');
+    const apiSaveBtn = $('apiServerSaveBtn');
+    const apiStatus = $('apiServerStatus');
+    if (!apiInput || !apiSaveBtn || !apiStatus) return;
+
+    apiInput.value = SERVER_BASE || '';
+    apiStatus.textContent = SERVER_BASE
+        ? `API: ${SERVER_BASE}`
+        : 'API not configured — saved DB images will still load.';
+
+    apiSaveBtn.addEventListener('click', () => {
+        const value = normalizeServerBase(apiInput.value);
+        if (!value) {
+            try { localStorage.removeItem('profootplus_server_base'); } catch (e) {}
+            apiStatus.textContent = 'API cleared — saved DB images only.';
+            return;
+        }
+        if (!/^https?:\/\//i.test(value)) {
+            apiStatus.textContent = 'Use a full URL, e.g. https://your-backend.example.com';
+            apiStatus.classList.add('error-hint');
+            return;
+        }
+        try { localStorage.setItem('profootplus_server_base', value); } catch (e) {}
+        apiStatus.classList.remove('error-hint');
+        apiStatus.textContent = `Saved. Reload the page to use: ${value}`;
+    });
+}
+
 const filterBrandEl = $('filterBrand');
 if (filterBrandEl) {
     filterBrandEl.addEventListener('change', () => {
@@ -399,11 +456,20 @@ async function loadCatalogForImageLinking() {
         resetPipelineState(items);
         if (hintEl) {
             const parentCount = new Set(items.map(x => String(x.parentProductId))).size;
-            hintEl.textContent = `${parentCount} product(s) · ${items.length} color branch(es). Each color is searched independently and nothing is saved until you commit.`;
+            hintEl.textContent = `${parentCount} product(s) · ${items.length} color branch(es). Saved DB images are shown immediately. Nothing is saved until you commit.`;
         }
 
         if (items.length === 0) {
             if (statusEl) statusEl.textContent = 'complete — no color rows found';
+            renderCopyLogButton();
+            return;
+        }
+
+        if (!SERVER_BASE) {
+            if (statusEl) statusEl.textContent = `catalog loaded — ${items.length} color branch(es); Bing search disabled until an API is configured`;
+            if (hintEl) {
+                hintEl.textContent = `Saved Supabase images are loaded. Configure a production HTTPS backend in the Backend API control to run Bing image sourcing from this device.`;
+            }
             renderCopyLogButton();
             return;
         }
@@ -420,12 +486,16 @@ async function loadCatalogForImageLinking() {
 }
 
 function imagesFromResult(productId) {
+    const product = state.productsById && state.productsById.get(String(productId));
     const result = state.results[productId];
-    if (!result || !result.slotAssignments) return [];
+    const existing = product && Array.isArray(product.existingImages) ? product.existingImages : [];
+    const assignments = (result && result.slotAssignments) || {};
+
+    // New/manual assignments replace the corresponding saved DB slot.
+    // Untouched slots keep their already-saved image instead of being
+    // accidentally erased when a partial sourcing run is committed.
     return SLOTS
-        .map(slot => result.slotAssignments[slot])
-        .filter(Boolean)
-        .map(a => a.url)
+        .map((slot, idx) => assignments[slot]?.url || existing[idx] || null)
         .filter(Boolean);
 }
 
@@ -1141,6 +1211,15 @@ function looksLikeAdultContent(item) {
 }
 
 async function fetchFromBing(query, limit = 10, _isRetry = false) {
+    if (!SERVER_BASE) {
+        return {
+            images: [],
+            error: 'Image-search backend is not configured for this deployed page. Saved Supabase images remain available; set a production API URL in the Backend API control or use ?api=https://YOUR-BACKEND-URL.',
+            blocked: false,
+            suspectedOffTopic: false,
+        };
+    }
+
     try {
         const res = await fetch(`${SERVER_BASE}/api/bing/search?q=${encodeURIComponent(query)}&limit=${limit}`);
 
@@ -1708,6 +1787,13 @@ const virtualList = (function createStandardList() {
         return row;
     }
 
+    function getDbSlotAssignment(product, slotKey) {
+        const idx = SLOTS.indexOf(slotKey);
+        const url = idx >= 0 && Array.isArray(product.existingImages) ? product.existingImages[idx] : null;
+        if (!url) return null;
+        return { url, confidence: 'Saved in DB', source: 'db' };
+    }
+
     function paintRow(row, product) {
         row.querySelector('.rt-id').textContent = product.colorId || product.id;
         row.querySelector('.rt-name').textContent = ` ${product.color || 'Color'} · ${product.sku || 'No model code'} `;
@@ -1730,7 +1816,7 @@ const virtualList = (function createStandardList() {
         SLOTS.forEach((s) => {
             const slotEl = row.querySelector(`.slot[data-slot="${s}"]`);
             const assignment = result && result.slotAssignments ? result.slotAssignments[s] : null;
-            paintSlot(slotEl, assignment);
+            paintSlot(slotEl, assignment || getDbSlotAssignment(product, s));
         });
     }
 
@@ -1738,18 +1824,23 @@ const virtualList = (function createStandardList() {
         if (!slotEl) return;
         const body = slotEl.querySelector('.slot-body');
         if (assignment) {
+            const isDbSaved = assignment.source === 'db';
             const isManual = assignment.confidence === 'Manually Added';
             const isBestEffort = assignment.confidence === 'Unverified (Best Effort)';
             const isWeakRescue = assignment.confidence === 'Unverified (Weak Match — Review)';
             const isUnverified = isBestEffort || isWeakRescue;
             const badgeText = isManual ? 'Manual' : isWeakRescue ? 'Review' : isBestEffort ? 'Unverified' : (assignment.confidence || '').replace('Meta-Verified ', '').replace('URL-Verified ', '');
+            const badgeClass = isDbSaved ? ' slot-tier-badge-db' : isManual ? ' slot-tier-badge-manual' : isUnverified ? ' slot-tier-badge-unverified' : '';
+            const deleteButton = isDbSaved ? '' : '<button class="slot-delete" title="Remove image" type="button">×</button>';
             body.innerHTML = `
-                <button class="slot-delete" title="Remove image" type="button">×</button>
-                ${badgeText ? `<span class="slot-tier-badge${isManual ? ' slot-tier-badge-manual' : ''}${isUnverified ? ' slot-tier-badge-unverified' : ''}" title="${assignment.confidence || ''}">${badgeText}</span>` : ''}
+                ${deleteButton}
+                ${badgeText ? `<span class="slot-tier-badge${badgeClass}" title="${assignment.confidence || ''}">${badgeText}</span>` : ''}
                 <img src="${assignment.url}" alt="slot image" loading="lazy" decoding="async" draggable="false">
             `;
-            slotEl.dataset.tier = String(confidenceRank(assignment.confidence));
-            slotEl.setAttribute('draggable', 'true');
+            slotEl.dataset.tier = String(isDbSaved ? '' : confidenceRank(assignment.confidence));
+            if (isDbSaved) delete slotEl.dataset.tier;
+            slotEl.setAttribute('draggable', isDbSaved ? 'false' : 'true');
+            slotEl.dataset.source = isDbSaved ? 'db' : 'pipeline';
         } else {
             body.innerHTML = '<div class="empty">pending…</div>';
             delete slotEl.dataset.tier;
@@ -1776,7 +1867,9 @@ const virtualList = (function createStandardList() {
         const row = document.getElementById(`row-${productId}`);
         if (row) {
             const slotEl = row.querySelector(`.slot[data-slot="${slotKey}"]`);
-            paintSlot(slotEl, assignment);
+            const product = state.productsById && state.productsById.get(String(productId));
+            const displayAssignment = assignment || (product && getDbSlotAssignment(product, slotKey));
+            paintSlot(slotEl, displayAssignment);
         }
     }
 
@@ -2764,4 +2857,5 @@ async function handleCopyLogClick() {
 /* ============================================================
    AUTO-LOAD FROM SUPABASE
    ============================================================ */
+setupServerConfigUI();
 loadCatalogForImageLinking().catch(() => {});
